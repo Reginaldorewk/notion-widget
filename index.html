@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Relógio e clima</title>
+
+  <style>
+    /* Sem dependências: usa Inter se estiver instalada. */
+    :root {
+      color-scheme: light;
+      --page: #ffffff;
+      --card: #ffffff;
+      --text: #37352f;
+      --muted: #787774;
+      --border: rgba(55, 53, 47, .12);
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #191919;
+      --card: #202020;
+      --text: #eeeeec;
+      --muted: #a3a39e;
+      --border: rgba(255, 255, 255, .10);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--page);
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", sans-serif;
+      color: var(--text);
+    }
+
+    .widget {
+      width: 100%;
+      min-height: 190px;
+      padding: clamp(18px, 4vw, 32px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+
+    .clock, .weather { min-width: 0; }
+
+    .eyebrow, .date, .condition, .status, .credit {
+      color: var(--muted);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .time {
+      display: block;
+      font-size: clamp(30px, 6vw, 52px);
+      font-weight: 550;
+      letter-spacing: -.055em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+
+    .seconds {
+      margin-left: 3px;
+      font-size: .48em;
+      color: var(--muted);
+      letter-spacing: -.02em;
+    }
+
+    .date {
+      margin: 10px 0 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .weather {
+      padding-left: 24px;
+      border-left: 1px solid var(--border);
+    }
+
+    .reading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0;
+    }
+
+    .icon { font-size: 32px; line-height: 1; }
+
+    .temperature {
+      font-size: 32px;
+      font-weight: 550;
+      letter-spacing: -.05em;
+      white-space: nowrap;
+    }
+
+    .condition { margin: 0; font-size: 13px; }
+    .status { margin: 8px 0 0; font-size: 11px; line-height: 1.5; }
+
+    .credit {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 10px;
+      text-underline-offset: 3px;
+    }
+
+    button {
+      margin-top: 8px;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid var(--muted);
+      outline-offset: 3px;
+    }
+
+    [hidden] { display: none !important; }
+
+    /* Em blocos estreitos, os módulos ficam empilhados. */
+    @media (max-width: 420px) {
+      .widget { grid-template-columns: 1fr; gap: 18px; }
+      .weather {
+        padding: 18px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+      .time { font-size: clamp(32px, 12vw, 48px); }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="widget" aria-label="Relógio, data e clima">
+    <section class="clock" aria-label="Hora e data">
+      <p class="eyebrow" id="clock-label">Agora</p>
+      <!-- Sem aria-live: evita anunciar o relógio a cada segundo. -->
+      <time class="time" id="clock">
+        <span id="hours">--:--</span><span class="seconds" id="seconds">:--</span>
+      </time>
+      <p class="date" id="date">Carregando data…</p>
+    </section>
+
+    <section class="weather" aria-label="Condições meteorológicas">
+      <p class="eyebrow" id="location">Clima</p>
+      <div class="reading">
+        <span class="icon" id="icon" aria-hidden="true">◌</span>
+        <span class="temperature" id="temperature">— °C</span>
+      </div>
+      <p class="condition" id="condition">Carregando clima…</p>
+      <p class="status" id="status" role="status"></p>
+      <button id="retry" type="button" hidden>Tentar novamente</button>
+      <br>
+      <a class="credit" href="https://open-meteo.com/"
+         target="_blank" rel="noopener noreferrer">Clima por Open-Meteo</a>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const params = new URLSearchParams(location.search);
+    const $ = id => document.getElementById(id);
+
+    // theme=auto acompanha o sistema operacional, não o tema interno do Notion.
+    const theme = params.get("theme") || "auto";
+    const preference = matchMedia("(prefers-color-scheme: dark)");
+
+    function applyTheme() {
+      document.documentElement.dataset.theme =
+        theme === "dark" || theme === "light"
+          ? theme
+          : preference.matches ? "dark" : "light";
+    }
+
+    applyTheme();
+    preference.addEventListener("change", applyTheme);
+
+    // Padrão: São Paulo. Coordenadas inválidas são informadas na interface.
+    function coordinate(name, fallback, min, max) {
+      if (!params.has(name)) return fallback;
+      const raw = params.get(name).trim();
+      const number = Number(raw);
+      if (!raw || !Number.isFinite(number) || number < min || number > max) {
+        throw new Error("Coordenadas inválidas na URL.");
+      }
+      return number;
+    }
+
+    // tz é opcional. Sem ele, o relógio segue o fuso do dispositivo.
+    let timeZone = params.get("tz") || undefined;
+    try {
+      new Intl.DateTimeFormat("pt-BR", { timeZone }).format();
+    } catch {
+      timeZone = undefined;
+      $("clock-label").textContent = "Agora · fuso do dispositivo";
+    }
+
+    const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone, hour: "2-digit", minute: "2-digit",
+      second: "2-digit", hourCycle: "h23"
+    });
+    const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone, weekday: "long", day: "numeric",
+      month: "long", year: "numeric"
+    });
+
+    function updateClock() {
+      const now = new Date();
+      const parts = timeFormatter.formatToParts(now);
+      const value = type => parts.find(part => part.type === type).value;
+      $("hours").textContent = `${value("hour")}:${value("minute")}`;
+      $("seconds").textContent = `:${value("second")}`;
+      $("clock").dateTime = now.toISOString();
+      $("clock").setAttribute("aria-label", timeFormatter.format(now));
+      $("date").textContent = dateFormatter.format(now);
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Códigos WMO usados pela Open-Meteo; ícones sem downloads externos.
+    function weatherInfo(code, isDay) {
+      if (code === 0) return [isDay ? "☀️" : "🌙", "Céu limpo"];
+      if (code === 1) return [isDay ? "🌤️" : "🌙", "Predominantemente limpo"];
+      if (code === 2) return ["⛅", "Parcialmente nublado"];
+      if (code === 3) return ["☁️", "Nublado"];
+      if ([45, 48].includes(code)) return ["🌫️", "Nevoeiro"];
+      if ([51, 53, 55].includes(code)) return ["🌦️", "Garoa"];
+      if ([56, 57].includes(code)) return ["🌧️", "Garoa congelante"];
+      if ([61, 63, 65].includes(code)) return ["🌧️", "Chuva"];
+      if ([66, 67].includes(code)) return ["🌧️", "Chuva congelante"];
+      if ([71, 73, 75, 77].includes(code)) return ["❄️", "Neve"];
+      if ([80, 81, 82].includes(code)) return ["🌦️", "Pancadas de chuva"];
+      if ([85, 86].includes(code)) return ["🌨️", "Pancadas de neve"];
+      if ([95, 96, 99].includes(code)) return ["⛈️", "Trovoadas"];
+      return ["🌡️", "Condição não informada"];
+    }
+
+    const refreshInterval = 15 * 60 * 1000;
+    let loading = false;
+    let lastAttempt = 0;
+    let hasWeather = false;
+
+    async function updateWeather() {
+      if (loading) return;
+      loading = true;
+      lastAttempt = Date.now();
+      $("retry").hidden = true;
+      $("status").textContent = "Consultando clima…";
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+
+      try {
+        const lat = coordinate("lat", -23.55, -90, 90);
+        const lon = coordinate("lon", -46.63, -180, 180);
+        const defaultLocation = lat === -23.55 && lon === -46.63;
+        $("location").textContent = params.get("city") ||
+          (defaultLocation ? "São Paulo" : `${lat.toFixed(2)}, ${lon.toFixed(2)}`);
+
+        const url = new URL("https://api.open-meteo.com/v1/forecast");
+        url.search = new URLSearchParams({
+          latitude: lat,
+          longitude: lon,
+          current: "temperature_2m,weather_code,is_day",
+          temperature_unit: "celsius",
+          timezone: "auto",
+          timeformat: "unixtime"
+        });
+
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("Falha na consulta meteorológica.");
+
+        const data = await response.json();
+        const current = data.current;
+        if (!current || !Number.isFinite(current.temperature_2m) ||
+            !Number.isFinite(current.weather_code) ||
+            !Number.isFinite(current.time)) {
+          throw new Error("Resposta meteorológica incompleta.");
+        }
+
+        const [icon, description] =
+          weatherInfo(current.weather_code, current.is_day === 1);
+
+        $("icon").textContent = icon;
+        $("temperature").textContent =
+          `${Math.round(current.temperature_2m)} °C`;
+        $("condition").textContent = description;
+
+        // Mostra o horário do dado no fuso da localização consultada.
+        const observationTime = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: data.timezone,
+          hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+        }).format(new Date(current.time * 1000));
+
+        $("status").textContent = `Dados das ${observationTime} · atualização a cada 15 min`;
+        hasWeather = true;
+      } catch (error) {
+        if (!hasWeather) $("condition").textContent = "Clima indisponível";
+        $("status").textContent = hasWeather
+          ? "Sem atualização · exibindo os últimos dados recebidos."
+          : error.message === "Coordenadas inválidas na URL."
+            ? error.message
+            : "Não foi possível consultar o clima. Tente novamente.";
+        $("retry").hidden = false;
+      } finally {
+        clearTimeout(timeout);
+        loading = false;
+      }
+    }
+
+    $("retry").addEventListener("click", updateWeather);
+    updateWeather();
+
+    // Evita consultas periódicas enquanto o embed está oculto.
+    setInterval(() => {
+      if (!document.hidden) updateWeather();
+    }, refreshInterval);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      updateClock();
+      if (Date.now() - lastAttempt >= refreshInterval) updateWeather();
+    });
+  </script>
+</body>
+</html>
