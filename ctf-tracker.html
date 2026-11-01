@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notion CTF & Goals Tracker</title>
+  <style>
+    :root {
+      --bg: #191919;
+      --card: #202020;
+      --border: #2f2f2f;
+      --text: #ffffff;
+      --muted: #9b9a97;
+      --accent: #2eaadc;
+      --green: #4dab9a;
+      --btn-bg: #2c2c2c;
+    }
+    body.light {
+      --bg: #ffffff;
+      --card: #f7f6f3;
+      --border: #e9e9e7;
+      --text: #37352f;
+      --muted: #787774;
+      --accent: #0b6e99;
+      --green: #0f7b6c;
+      --btn-bg: #eae9e5;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      padding: 8px;
+    }
+    .widget-card {
+      background-color: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 14px;
+      gap: 10px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background-color: var(--btn-bg);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: var(--green);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      text-align: center;
+    }
+    .stat-box {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+    .stat-val {
+      font-size: 1.1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-btns {
+      display: flex;
+      gap: 4px;
+    }
+    .mini-btn {
+      background: var(--btn-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mini-btn:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="widget-card">
+    <div class="header">
+      <span id="goalTitle">🎯 Meta Red Team / CTF</span>
+      <span id="goalPercent" style="color: var(--muted)">0/20 (0%)</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <span class="stat-label">🖥️ Labs/Boxes</span>
+        <span class="stat-val" id="val-boxes">0</span>
+        <div class="stat-btns">
+          <button class="mini-btn" onclick="updateStat('boxes', -1)">-</button>
+          <button class="mini-btn" onclick="updateStat('boxes', 1)">+</button>
+        </div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">🚩 User Flag</span>
+        <span class="stat-val" id="val-user">0</span>
+        <div class="stat-btns">
+          <button class="mini-btn" onclick="updateStat('user', -1)">-</button>
+          <button class="mini-btn" onclick="updateStat('user', 1)">+</button>
+        </div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">💀 Root/System</span>
+        <span class="stat-val" id="val-root">0</span>
+        <div class="stat-btns">
+          <button class="mini-btn" onclick="updateStat('root', -1)">-</button>
+          <button class="mini-btn" onclick="updateStat('root', 1)">+</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('theme') === 'light') document.body.classList.add('light');
+
+    const title = params.get('title') || '🎯 Meta Red Team / CTF';
+    const goal = parseInt(params.get('goal')) || 20;
+    const storageKey = 'ctf_tracker_' + (params.get('id') || 'default');
+
+    document.getElementById('goalTitle').textContent = title;
+
+    let state = JSON.parse(localStorage.getItem(storageKey)) || { boxes: 0, user: 0, root: 0 };
+
+    function render() {
+      document.getElementById('val-boxes').textContent = state.boxes;
+      document.getElementById('val-user').textContent = state.user;
+      document.getElementById('val-root').textContent = state.root;
+
+      const pct = Math.min(100, Math.round((state.boxes / goal) * 100));
+      document.getElementById('goalPercent').textContent = `${state.boxes}/${goal} (${pct}%)`;
+      document.getElementById('progressFill').style.width = `${pct}%`;
+    }
+
+    function updateStat(key, delta) {
+      state[key] = Math.max(0, state[key] + delta);
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      render();
+    }
+
+    render();
+  </script>
+</body>
+</html>

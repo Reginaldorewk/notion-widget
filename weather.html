@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notion Weather Widget</title>
+  <style>
+    :root {
+      --bg: #191919;
+      --card: #202020;
+      --border: #2f2f2f;
+      --text: #ffffff;
+      --muted: #9b9a97;
+    }
+    body.light {
+      --bg: #ffffff;
+      --card: #f7f6f3;
+      --border: #e9e9e7;
+      --text: #37352f;
+      --muted: #787774;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      padding: 8px;
+    }
+    .widget-card {
+      background-color: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
+    }
+    .icon { font-size: clamp(2rem, 7vw, 3rem); }
+    .info { display: flex; flex-direction: column; }
+    .temp {
+      font-size: clamp(1.5rem, 5vw, 2.2rem);
+      font-weight: 700;
+    }
+    .desc, .city {
+      font-size: clamp(0.75rem, 2.5vw, 0.9rem);
+      color: var(--muted);
+    }
+    .city { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+  <div class="widget-card">
+    <div class="icon" id="w-icon">⛅</div>
+    <div class="info">
+      <div class="city" id="w-city">São Paulo</div>
+      <div class="temp" id="w-temp">--°C</div>
+      <div class="desc" id="w-desc">Atualizando...</div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('theme') === 'light') document.body.classList.add('light');
+
+    const lat = params.get('lat') || '-23.55';
+    const lon = params.get('lon') || '-46.63';
+    const city = params.get('city') || 'São Paulo';
+    document.getElementById('w-city').textContent = city;
+
+    const weatherMap = {
+      0: ['☀️', 'Céu limpo'], 1: ['🌤️', 'Predom. limpo'], 2: ['⛅', 'Parcial. nublado'],
+      3: ['☁️', 'Encoberto'], 45: ['🌫️', 'Neblina'], 51: ['🌦️', 'Garoa leve'],
+      61: ['🌧️', 'Chuva leve'], 63: ['🌧️', 'Chuva moderada'], 65: ['⛈️', 'Chuva forte'],
+      80: ['🌦️', 'Pancadas de chuva'], 95: ['⚡', 'Tempestade']
+    };
+
+    async function fetchWeather() {
+      try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const data = await res.json();
+        const cw = data.current_weather;
+        const [icon, desc] = weatherMap[cw.weathercode] || ['🌡️', 'Condição local'];
+        document.getElementById('w-icon').textContent = icon;
+        document.getElementById('w-temp').textContent = `${Math.round(cw.temperature)}°C`;
+        document.getElementById('w-desc').textContent = desc;
+      } catch (e) {
+        document.getElementById('w-desc').textContent = 'Erro ao carregar';
+      }
+    }
+    fetchWeather();
+    setInterval(fetchWeather, 600000); // Atualiza a cada 10 min
+  </script>
+</body>
+</html>

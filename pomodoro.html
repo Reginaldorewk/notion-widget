@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notion Pomodoro Widget</title>
+  <style>
+    :root {
+      --bg: #191919;
+      --card: #202020;
+      --border: #2f2f2f;
+      --text: #ffffff;
+      --muted: #9b9a97;
+      --accent: #eb5757;
+      --btn-bg: #2c2c2c;
+      --btn-hover: #3a3a3a;
+    }
+    body.light {
+      --bg: #ffffff;
+      --card: #f7f6f3;
+      --border: #e9e9e7;
+      --text: #37352f;
+      --muted: #787774;
+      --accent: #e03e3e;
+      --btn-bg: #eae9e5;
+      --btn-hover: #dfded9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      padding: 8px;
+    }
+    .widget-card {
+      background-color: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      gap: 8px;
+    }
+    .modes {
+      display: flex;
+      gap: 6px;
+    }
+    .mode-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .timer {
+      font-size: clamp(1.8rem, 6vw, 2.6rem);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .ctrl-btn {
+      background-color: var(--btn-bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .ctrl-btn:hover { background-color: var(--btn-hover); }
+    .sessions {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-card">
+    <div class="modes">
+      <button class="mode-btn active" onclick="setMode(25, this)">Foco 25m</button>
+      <button class="mode-btn" onclick="setMode(50, this)">Lab 50m</button>
+      <button class="mode-btn" onclick="setMode(5, this)">Pausa 5m</button>
+    </div>
+    <div class="timer" id="display">25:00</div>
+    <div class="controls">
+      <button class="ctrl-btn" id="startBtn" onclick="toggleTimer()">Iniciar</button>
+      <button class="ctrl-btn" onclick="resetTimer()">Reset</button>
+    </div>
+    <div class="sessions">Sessões hoje: <strong id="sessionCount">0</strong> 🍅</div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('theme') === 'light') document.body.classList.add('light');
+
+    let defaultMinutes = parseInt(params.get('focus')) || 25;
+    let timeLeft = defaultMinutes * 60;
+    let timerId = null;
+    let isRunning = false;
+
+    const todayKey = 'pomo_' + new Date().toISOString().slice(0, 10);
+    let sessions = parseInt(localStorage.getItem(todayKey) || '0');
+    document.getElementById('sessionCount').textContent = sessions;
+
+    function updateDisplay() {
+      const m = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+      const s = String(timeLeft % 60).padStart(2, '0');
+      document.getElementById('display').textContent = `${m}:${s}`;
+    }
+
+    function playBeep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch (e) {}
+    }
+
+    function toggleTimer() {
+      const btn = document.getElementById('startBtn');
+      if (isRunning) {
+        clearInterval(timerId);
+        isRunning = false;
+        btn.textContent = 'Continuar';
+      } else {
+        isRunning = true;
+        btn.textContent = 'Pausar';
+        timerId = setInterval(() => {
+          if (timeLeft > 0) {
+            timeLeft--;
+            updateDisplay();
+          } else {
+            clearInterval(timerId);
+            isRunning = false;
+            btn.textContent = 'Iniciar';
+            playBeep();
+            if (defaultMinutes >= 25) {
+              sessions++;
+              localStorage.setItem(todayKey, sessions);
+              document.getElementById('sessionCount').textContent = sessions;
+            }
+            timeLeft = defaultMinutes * 60;
+            updateDisplay();
+          }
+        }, 1000);
+      }
+    }
+
+    function resetTimer() {
+      clearInterval(timerId);
+      isRunning = false;
+      document.getElementById('startBtn').textContent = 'Iniciar';
+      timeLeft = defaultMinutes * 60;
+      updateDisplay();
+    }
+
+    function setMode(mins, el) {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      defaultMinutes = mins;
+      resetTimer();
+    }
+
+    updateDisplay();
+  </script>
+</body>
+</html>
